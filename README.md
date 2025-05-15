@@ -16,7 +16,7 @@ A simple CRUD API built using Go (Golang).
 ## 🛠 Installation
 
 ```bash
-git clone https://github.com/your-username/go-crud-api.git
+git clone https://github.com/Saidurbu/go-lang-crud
 cd go-crud-api
 go mod tidy
 
