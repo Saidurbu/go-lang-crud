@@ -13,6 +13,7 @@ import (
 
 	config "github.com/Saidurbu/go-lang-crud/internal/config"
 	"github.com/Saidurbu/go-lang-crud/internal/handlers/student"
+	"github.com/Saidurbu/go-lang-crud/internal/middleware"
 	"github.com/Saidurbu/go-lang-crud/internal/storage/sqlite"
 )
 
@@ -29,7 +30,16 @@ func main() {
 
 	router := http.NewServeMux()
 
-	router.HandleFunc("POST /api/students", student.New(storage))
+	router.HandleFunc("POST /api/registration", student.Registration(storage))
+	router.HandleFunc("POST /api/login", student.Login(storage))
+
+	router.HandleFunc("GET /api/profile", middleware.JWTAuth(student.GetProfile(storage)))
+
+	router.HandleFunc("GET /api/students", middleware.JWTAuth(student.GetList(storage)))
+	router.HandleFunc("POST /api/students", middleware.JWTAuth(student.New(storage)))
+	router.HandleFunc("GET /api/students/{id}", middleware.JWTAuth(student.GetById(storage)))
+	router.HandleFunc("PUT /api/students/{id}", middleware.JWTAuth(student.Update(storage)))
+	router.HandleFunc("DELETE /api/students/{id}", middleware.JWTAuth(student.Delete(storage)))
 
 	server := http.Server{
 		Addr:    cfg.Addr,
