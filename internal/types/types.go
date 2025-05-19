@@ -1,15 +1,15 @@
 package types
 
 type Student struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name" validate:"required"`
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" min:"8"`
-	Age      int    `json:"age" validate:"required,min=0"`
+	ID       uint `gorm:"primaryKey"`
+	Name     string
+	Email    string `gorm:"unique"`
+	Password string
+	Age      int
 }
 
 type StudentResponse struct {
-	ID    int64  `json:"id"`
+	ID    uint   `json:"id"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
 	Age   int    `json:"age"`

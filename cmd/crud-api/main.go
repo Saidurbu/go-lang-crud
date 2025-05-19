@@ -33,7 +33,7 @@ func main() {
 	router.HandleFunc("POST /api/registration", student.Registration(storage))
 	router.HandleFunc("POST /api/login", student.Login(storage))
 
-	//router.HandleFunc("GET /api/profile", middleware.JWTAuth(student.GetProfile(storage)))
+	router.HandleFunc("GET /api/profile", middleware.JWTAuth(student.GetProfile(storage)))
 
 	router.HandleFunc("GET /api/students", middleware.JWTAuth(student.GetList(storage)))
 	router.HandleFunc("POST /api/students", middleware.JWTAuth(student.New(storage)))

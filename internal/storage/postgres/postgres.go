@@ -2,44 +2,40 @@ package postgres
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"log"
 
 	"github.com/Saidurbu/go-lang-crud/internal/config"
 	"github.com/Saidurbu/go-lang-crud/internal/types"
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type Postgres struct {
-	DB *sql.DB
+	DB *gorm.DB
 }
 
 func New(cfg *config.Config) (*Postgres, error) {
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
+		cfg.DBHost, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBPort)
 
-	db, err := sql.Open("postgres", connStr)
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS students (
-			id SERIAL PRIMARY KEY,
-			name TEXT,
-			email TEXT UNIQUE,
-			password TEXT,
-			age INTEGER
-		)
-	`)
+	db.AutoMigrate(&types.Student{})
 	if err != nil {
 		return nil, err
 	}
-
+	log.Println("GORM connected to DB")
 	return &Postgres{DB: db}, nil
 }
 
-func (p *Postgres) CreateStudent(name string, email string, password string, age int) (int64, error) {
+func (p *Postgres) CreateStudent(name string, email string, password string, age int) (uint, error) {
 	if password == "" {
 		return 0, fmt.Errorf("password is required")
 	}
@@ -49,145 +45,118 @@ func (p *Postgres) CreateStudent(name string, email string, password string, age
 		return 0, err
 	}
 
-	stmt, err := p.DB.Prepare("INSERT INTO students (name, email, password, age) VALUES ($1, $2, $3, $4) RETURNING id")
-	if err != nil {
-		return 0, err
-	}
-	defer stmt.Close()
-
-	var lastId int64
-	err = stmt.QueryRow(name, email, string(hashedPassword), age).Scan(&lastId)
-	if err != nil {
-		return 0, err
+	student := types.Student{
+		Name:     name,
+		Email:    email,
+		Password: string(hashedPassword),
+		Age:      age,
 	}
 
-	return lastId, nil
+	if err := p.DB.Create(&student).Error; err != nil {
+		return 0, err
+	}
+
+	return student.ID, nil
 }
 
-func (p *Postgres) GetStudentById(id int64) (types.Student, error) {
-	stmt, err := p.DB.Prepare("SELECT id, name, email, password, age FROM students WHERE id = $1")
-	if err != nil {
-		return types.Student{}, err
-	}
-	defer stmt.Close()
+func (p *Postgres) GetStudentById(id uint) (types.Student, error) {
 	var student types.Student
-	err = stmt.QueryRow(id).Scan(&student.ID, &student.Name, &student.Email, &student.Password, &student.Age)
-	if err != nil {
-		if err == sql.ErrNoRows {
+	if err := p.DB.First(&student, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
 			return types.Student{}, fmt.Errorf("student not found with id %d: %w", id, err)
 		}
-		return types.Student{}, err
+		return types.Student{}, fmt.Errorf("query error: %w", err)
 	}
 	return student, nil
 }
 
 func (p *Postgres) GetStudents() ([]types.Student, error) {
-	stmt, err := p.DB.Prepare("SELECT id, name, email, password, age FROM students")
-	if err != nil {
-		return nil, err
-	}
-	defer stmt.Close()
-
-	rows, err := stmt.Query()
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
 	var students []types.Student
-	for rows.Next() {
-		var student types.Student
-		err = rows.Scan(&student.ID, &student.Name, &student.Email, &student.Password, &student.Age)
-		if err != nil {
-			return nil, err
-		}
-		students = append(students, student)
+	if err := p.DB.Find(&students).Error; err != nil {
+		return nil, fmt.Errorf("query error: %w", err)
 	}
-
 	return students, nil
 }
 
-func (p *Postgres) UpdateStudent1(id int64, name string, email string, password string, age int) error {
-	stmt, err := p.DB.Prepare("UPDATE students SET name = $1, email = $2, password = $3, age = $4 WHERE id = $5")
+func (p *Postgres) GetStudentByEmail(email string) (types.Student, error) {
+	stmt, err := p.DB.Raw("SELECT id, name, email, password, age FROM students WHERE email = $1", email).Rows()
+	if err != nil {
+		return types.Student{}, err
+	}
+	defer stmt.Close()
+
+	var student types.Student
+	if stmt.Next() {
+		if err := stmt.Scan(&student.ID, &student.Name, &student.Email, &student.Password, &student.Age); err != nil {
+			return types.Student{}, err
+		}
+	} else {
+		return types.Student{}, fmt.Errorf("student not found with email %s: %w", email, sql.ErrNoRows)
+	}
+
+	return student, nil
+}
+
+func (p *Postgres) UpdateStudent1(id uint, name string, email string, password string, age int) error {
+	stmt, err := p.DB.Raw("UPDATE students SET name = $1, email = $2, password = $3, age = $4 WHERE id = $5", name, email, password, age, id).Rows()
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
-	_, err = stmt.Exec(name, email, password, age, id)
+	// Check if the student exists
+	var student types.Student
+	err = stmt.Scan(&student.ID, &student.Name, &student.Email, &student.Password, &student.Age)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("student not found with id %d: %w", id, err)
 		}
-		return err
+		return fmt.Errorf("query error: %w", err)
 	}
-
 	return nil
 }
 
-func (p *Postgres) UpdateStudent(id int64, name string, email string, password string, age int) error {
+func (p *Postgres) UpdateStudent(id uint, name, email, password string, age int) error {
+	var student types.Student
+
+	if err := p.DB.First(&student, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("student not found with id %d", id)
+		}
+		return fmt.Errorf("failed to find student: %w", err)
+	}
+
+	student.Name = name
+	student.Email = email
+	student.Age = age
 
 	if password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to hash password: %w", err)
 		}
-		stmt, err := p.DB.Prepare("UPDATE students SET name = $1, email = $2, password = $3, age = $4 WHERE id = $5")
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-
-		_, err = stmt.Exec(name, email, string(hashedPassword), age, id)
-		if err != nil {
-			return err
-		}
-
-	} else {
-		stmt, err := p.DB.Prepare("UPDATE students SET name = $1, email = $2, age = $3 WHERE id = $4")
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-		_, err = stmt.Exec(name, email, age, id)
-		if err != nil {
-			return err
-		}
-
+		student.Password = string(hashed)
 	}
-	return nil
 
-}
-
-func (p *Postgres) DeleteStudent(id int64) error {
-	stmt, err := p.DB.Prepare("DELETE FROM students WHERE id = $1")
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-	_, err = stmt.Exec(id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("student not found with id %d: %w", id, err)
-		}
-		return err
+	if err := p.DB.Save(&student).Error; err != nil {
+		return fmt.Errorf("failed to update student: %w", err)
 	}
 
 	return nil
 }
 
-func (p *Postgres) GetStudentByEmail(email string) (types.Student, error) {
-	stmt, err := p.DB.Prepare("SELECT id, name, email, password, age FROM students WHERE email = $1")
-	if err != nil {
-		return types.Student{}, err
-	}
-	defer stmt.Close()
+func (p *Postgres) DeleteStudent(id uint) error {
 	var student types.Student
-	err = stmt.QueryRow(email).Scan(&student.ID, &student.Name, &student.Email, &student.Password, &student.Age)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return types.Student{}, fmt.Errorf("student not found with email %s: %w", email, err)
+	result := p.DB.First(&student, id)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("student not found with id %d", id)
 		}
-		return types.Student{}, err
+		return result.Error
 	}
-	return student, nil
+
+	if err := p.DB.Delete(&student).Error; err != nil {
+		return fmt.Errorf("failed to delete student: %w", err)
+	}
+
+	return nil
 }
