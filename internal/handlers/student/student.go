@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Saidurbu/go-lang-crud/internal/storage"
-	"github.com/Saidurbu/go-lang-crud/internal/storage/sqlite"
+	"github.com/Saidurbu/go-lang-crud/internal/storage/postgres"
 	"github.com/Saidurbu/go-lang-crud/internal/types"
 	"github.com/Saidurbu/go-lang-crud/internal/utils/response"
 	"github.com/go-playground/validator/v10"
@@ -41,6 +40,15 @@ func New(storage storage.Storage) http.HandlerFunc {
 			return
 		}
 
+		existing, _ := storage.GetStudentByEmail(student.Email)
+
+		if existing.Email != "" {
+			response.WriteJSON(w, http.StatusConflict, map[string]string{
+				"message": "email already registered",
+			})
+			return
+		}
+
 		if err != nil {
 			response.WriteJSON(w, http.StatusBadRequest, response.GeneralError(err))
 			return
@@ -55,7 +63,6 @@ func New(storage storage.Storage) http.HandlerFunc {
 
 		lastId, err := storage.CreateStudent(student.Name, student.Email, student.Password, student.Age)
 
-		slog.Info("Student created", "ID", slog.Int64("id", lastId))
 		if err != nil {
 			response.WriteJSON(w, http.StatusInternalServerError, response.GeneralError(err))
 			return
@@ -86,6 +93,15 @@ func Registration(storage storage.Storage) http.HandlerFunc {
 			return
 		}
 
+		existing, _ := storage.GetStudentByEmail(student.Email)
+
+		if existing.Email != "" {
+			response.WriteJSON(w, http.StatusConflict, map[string]string{
+				"message": "email already registered",
+			})
+			return
+		}
+
 		if err := validator.New().Struct(student); err != nil {
 			validatorErrs := err.(validator.ValidationErrors)
 			response.WriteJSON(w, http.StatusBadRequest, response.ValidationError(validatorErrs))
@@ -93,15 +109,18 @@ func Registration(storage storage.Storage) http.HandlerFunc {
 
 		}
 
-		lastId, err := storage.CreateStudent(student.Name, student.Email, student.Password, student.Age)
+		user, err := storage.CreateStudent(student.Name, student.Email, student.Password, student.Age)
 
 		if err != nil {
 			response.WriteJSON(w, http.StatusInternalServerError, response.GeneralError(err))
 			return
 		}
 
-		response.WriteJSON(w, http.StatusCreated, map[string]string{"success": "User registered"})
-		slog.Info("User registered", "ID", slog.Int64("id", lastId))
+		response.WriteJSON(w, http.StatusCreated, map[string]interface{}{
+			"success": true,
+			"message": "user registered",
+			"id":      user,
+		})
 	}
 
 }
@@ -147,32 +166,27 @@ func Login(storage storage.Storage) http.HandlerFunc {
 	}
 }
 
-func Logout(storage storage.Storage) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		int64, err := strconv.ParseInt(id, 10, 64)
-		if err != nil {
-			response.WriteJSON(w, http.StatusBadRequest, response.GeneralError(fmt.Errorf("invalid id")))
-			return
-		}
-		err = storage.DeleteStudent(int64)
-		if err != nil {
-			response.WriteJSON(w, http.StatusInternalServerError, response.GeneralError(err))
-			return
-		}
-		response.WriteJSON(w, http.StatusOK, map[string]string{"success": "student deleted"})
+func Logout(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	emailVal := ctx.Value(emailContextKey)
+	email, ok := emailVal.(string)
+	if !ok || email == "" {
+		http.Error(w, "Email not found in token", http.StatusUnauthorized)
+		return
 	}
+
+	response.WriteJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
 }
 
 func GetById(storage storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
-		int64, err := strconv.ParseInt(id, 10, 64)
+		uintId, err := strconv.ParseUint(id, 10, 64)
 		if err != nil {
 			response.WriteJSON(w, http.StatusBadRequest, response.GeneralError(fmt.Errorf("invalid id")))
 			return
 		}
-		student, err := storage.GetStudentById(int64)
+		student, err := storage.GetStudentById(uint(uintId))
 		if err != nil {
 			response.WriteJSON(w, http.StatusNotFound, response.GeneralError(err))
 			return
@@ -193,6 +207,7 @@ func GetList(storage storage.Storage) http.HandlerFunc {
 		response.WriteJSON(w, http.StatusOK, students)
 	}
 }
+
 func Update(storage storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -222,7 +237,7 @@ func Update(storage storage.Storage) http.HandlerFunc {
 
 		}
 
-		err = storage.UpdateStudent(int64, student.Name, student.Email, student.Password, student.Age)
+		err = storage.UpdateStudent(uint(int64), student.Name, student.Email, student.Password, student.Age)
 		if err != nil {
 			response.WriteJSON(w, http.StatusInternalServerError, response.GeneralError(err))
 			return
@@ -238,7 +253,7 @@ func Delete(storage storage.Storage) http.HandlerFunc {
 			response.WriteJSON(w, http.StatusBadRequest, response.GeneralError(fmt.Errorf("invalid id")))
 			return
 		}
-		err = storage.DeleteStudent(int64)
+		err = storage.DeleteStudent(uint(int64))
 		if err != nil {
 			response.WriteJSON(w, http.StatusInternalServerError, response.GeneralError(err))
 			return
@@ -247,7 +262,7 @@ func Delete(storage storage.Storage) http.HandlerFunc {
 	}
 }
 
-func GetProfile(storage *sqlite.Sqlite) http.HandlerFunc {
+func GetProfile(storage *postgres.Postgres) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 

@@ -14,14 +14,14 @@ import (
 	config "github.com/Saidurbu/go-lang-crud/internal/config"
 	"github.com/Saidurbu/go-lang-crud/internal/handlers/student"
 	"github.com/Saidurbu/go-lang-crud/internal/middleware"
-	"github.com/Saidurbu/go-lang-crud/internal/storage/sqlite"
+	"github.com/Saidurbu/go-lang-crud/internal/storage/postgres"
 )
 
 func main() {
 
 	cfg := config.MustLoad()
 
-	storage, err := sqlite.New(cfg)
+	storage, err := postgres.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}

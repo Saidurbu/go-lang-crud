@@ -17,6 +17,11 @@ type Config struct {
 	Env         string `yaml:"env" env:"ENV" env-required:"true"`
 	StoragePath string `yaml:"storage_path" env:"STORAGE_PATH" env-required:"true"`
 	HTTPServer  `yaml:"http_server" env:"HTTP_SERVER" env-required:"true"`
+	DBHost      string `yaml:"db_host" env:"DB_HOST" env-required:"true"`
+	DBPort      string `yaml:"db_port" env:"DB_PORT" env-required:"true"`
+	DBUser      string `yaml:"db_user" env:"DB_USER" env-required:"true"`
+	DBPassword  string `yaml:"db_password" env:"DB_PASSWORD" env-required:"true"`
+	DBName      string `yaml:"db_name" env:"DB_NAME" env-required:"true"`
 }
 
 func MustLoad() *Config {
