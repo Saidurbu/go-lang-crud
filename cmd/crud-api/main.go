@@ -14,14 +14,14 @@ import (
 	config "github.com/Saidurbu/go-lang-crud/internal/config"
 	"github.com/Saidurbu/go-lang-crud/internal/handlers/student"
 	"github.com/Saidurbu/go-lang-crud/internal/middleware"
-	"github.com/Saidurbu/go-lang-crud/internal/storage/sqlite"
+	"github.com/Saidurbu/go-lang-crud/internal/storage/postgres"
 )
 
 func main() {
 
 	cfg := config.MustLoad()
 
-	storage, err := sqlite.New(cfg)
+	storage, err := postgres.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func main() {
 	router.HandleFunc("POST /api/registration", student.Registration(storage))
 	router.HandleFunc("POST /api/login", student.Login(storage))
 
-	router.HandleFunc("GET /api/profile", middleware.JWTAuth(student.GetProfile(storage)))
+	//router.HandleFunc("GET /api/profile", middleware.JWTAuth(student.GetProfile(storage)))
 
 	router.HandleFunc("GET /api/students", middleware.JWTAuth(student.GetList(storage)))
 	router.HandleFunc("POST /api/students", middleware.JWTAuth(student.New(storage)))

@@ -41,6 +41,15 @@ func New(storage storage.Storage) http.HandlerFunc {
 			return
 		}
 
+		existing, _ := storage.GetStudentByEmail(student.Email)
+
+		if existing.Email != "" {
+			response.WriteJSON(w, http.StatusConflict, map[string]string{
+				"message": "email already registered",
+			})
+			return
+		}
+
 		if err != nil {
 			response.WriteJSON(w, http.StatusBadRequest, response.GeneralError(err))
 			return
@@ -83,6 +92,15 @@ func Registration(storage storage.Storage) http.HandlerFunc {
 
 		if err != nil {
 			response.WriteJSON(w, http.StatusBadRequest, response.GeneralError(err))
+			return
+		}
+
+		existing, _ := storage.GetStudentByEmail(student.Email)
+
+		if existing.Email != "" {
+			response.WriteJSON(w, http.StatusConflict, map[string]string{
+				"message": "email already registered",
+			})
 			return
 		}
 
@@ -193,6 +211,7 @@ func GetList(storage storage.Storage) http.HandlerFunc {
 		response.WriteJSON(w, http.StatusOK, students)
 	}
 }
+
 func Update(storage storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")

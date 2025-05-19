@@ -153,44 +153,6 @@ func (s *Sqlite) UpdateStudent(id int64, name string, email string, password str
 
 }
 
-func (s *Sqlite) UpdateStudent1(id int64, name string, email string, password string, age int) error {
-
-	var hashedPassword string
-
-	if password != "" {
-		hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			return err
-		}
-		hashedPassword = string(hashed)
-
-		stmt, err := s.DB.Prepare("UPDATE students SET name = ?, email = ?, password = ?, age = ? WHERE id = ?")
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-
-		_, err = stmt.Exec(name, email, hashedPassword, age, id)
-		if err != nil {
-			return err
-		}
-	} else {
-		// Don't update password
-		stmt, err := s.DB.Prepare("UPDATE students SET name = ?, email = ?, age = ? WHERE id = ?")
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-
-		_, err = stmt.Exec(name, email, age, id)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (s *Sqlite) DeleteStudent(id int64) error {
 	stmt, err := s.DB.Prepare("DELETE FROM students WHERE id = ?")
 	if err != nil {
